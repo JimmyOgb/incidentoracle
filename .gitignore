@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest & test artifacts
+.pytest_cache/
+artifacts/
+*.log
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Secret files
+.env

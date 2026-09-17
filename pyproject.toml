@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "incident-oracle"
+version = "0.1.0"
+description = "Intelligent contract oracle for incident verification and consensus."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Incident Oracle Team" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = [
+    ".",
+    "contracts",
+]
