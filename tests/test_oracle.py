@@ -75,6 +75,7 @@ if "genlayer.gl" not in sys.modules:
     gl_mod.nondet = MagicMock()
     gl_mod.vm = MagicMock()
     gl_mod.vm.run_nondet_unsafe = lambda leader_fn, validator_fn: leader_fn()
+    gl_mod.transfer = MagicMock()
 
     def _eq_principle_stub(comparator, fn):
         return fn()
@@ -95,6 +96,18 @@ from contracts.autonomous_incident_oracle import (
     incident_comparator,
 )
 import genlayer.gl as gl
+
+if not hasattr(gl, "transfer") or not callable(getattr(gl, "transfer")):
+    gl.transfer = MagicMock()
+
+
+@pytest.fixture(autouse=True)
+def reset_gl_transfer():
+    if hasattr(gl, "transfer") and hasattr(gl.transfer, "reset_mock"):
+        gl.transfer.reset_mock()
+    else:
+        gl.transfer = MagicMock()
+    yield
 
 
 class TestIncidentComparatorIdenticalInputs:
@@ -471,8 +484,23 @@ class TestAutonomousIncidentOracleContract:
     def test_contract_initialization(self):
         oracle = AutonomousIncidentOracle()
         assert oracle.owner == gl.message.sender
+        assert oracle.treasury == gl.message.sender
         assert oracle.services == {}
         assert oracle.incident_logs == {}
+
+    def test_set_treasury(self):
+        oracle = AutonomousIncidentOracle()
+        assert oracle.treasury == gl.message.sender
+        new_treasury = "0x2222222222222222222222222222222222222222"
+        oracle.set_treasury(new_treasury)
+        assert oracle.treasury == new_treasury
+
+        # Non-owner caller fails assert
+        prev_sender = gl.message.sender
+        gl.message.sender = "0x9999999999999999999999999999999999999999"
+        with pytest.raises(AssertionError):
+            oracle.set_treasury("0x3333333333333333333333333333333333333333")
+        gl.message.sender = prev_sender
 
     def test_register_service_success(self):
         oracle = AutonomousIncidentOracle()
@@ -641,6 +669,11 @@ class TestAutonomousIncidentOracleContract:
         assert len(incidents) == 1
         assert incidents[0]["deposit_after_incident"] == 750
 
+        # Verify 50/50 slashing disposal: 250 slashed -> 125 bounty, 125 treasury
+        assert gl.transfer.call_count == 2
+        gl.transfer.assert_any_call(gl.message.sender, 125)
+        gl.transfer.assert_any_call(oracle.treasury, 125)
+
     def test_deposit_top_up_and_recovery(self):
         """Audit Target 3: Top-up deposit functionality."""
         oracle = AutonomousIncidentOracle()
@@ -687,7 +720,47 @@ class TestAutonomousIncidentOracleContract:
         remaining = oracle.withdraw_deposit(service_id, 400)
         assert remaining == 600
         assert oracle.get_service(service_id)["deposit"] == 600
+        gl.transfer.assert_called_with(gl.message.sender, 400)
 
         # Over-withdrawal rejected
         with pytest.raises(ValueError, match="Insufficient deposit"):
             oracle.withdraw_deposit(service_id, 700)
+
+    def test_slashing_disposal_major_outage(self, monkeypatch):
+        """Verify 50/50 distribution between reporter bounty and treasury on MAJOR outage."""
+        oracle = AutonomousIncidentOracle()
+        service_id = "major-outage-svc"
+        deposit = 2000
+        gl.message.value = deposit
+        oracle.register_service(service_id, "https://status.major.com")
+
+        custom_treasury = "0x8888888888888888888888888888888888888888"
+        oracle.set_treasury(custom_treasury)
+
+        llm_response = {
+            "is_outage": True,
+            "severity": "MAJOR",
+            "timestamp_epoch": 1710000000,
+            "reason": "Complete database cluster outage",
+        }
+        monkeypatch.setattr(gl.nondet.web, "render", lambda url: "Outage detected")
+        monkeypatch.setattr(gl.nondet, "exec_prompt", lambda prompt, response_format=None: llm_response)
+
+        # Reporter triggers report_incident
+        reporter = "0x7777777777777777777777777777777777777777"
+        prev_sender = gl.message.sender
+        gl.message.sender = reporter
+
+        gl.transfer.reset_mock()
+        oracle.report_incident(service_id)
+
+        # 100% of 2000 is slashed: 1000 to reporter, 1000 to treasury
+        assert gl.transfer.call_count == 2
+        gl.transfer.assert_any_call(reporter, 1000)
+        gl.transfer.assert_any_call(custom_treasury, 1000)
+
+        service = oracle.get_service(service_id)
+        assert service["deposit"] == 0
+        assert service["is_slashed"] is True
+
+        gl.message.sender = prev_sender

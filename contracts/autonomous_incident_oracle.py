@@ -109,6 +109,29 @@ MIN_AUDIT_INTERVAL: int = 300  # 5 minutes
 WITHDRAWAL_LOCK_PERIOD: int = 86400  # 24 hours
 # Penalty percentage for PARTIAL outage (deducted from active deposit)
 PARTIAL_SLASH_PENALTY_PCT: int = 25
+# Reporter bounty percentage of slashed collateral
+REPORTER_BOUNTY_PCT: int = 50
+
+# Runtime compatibility shims for gl.message.sender and gl.transfer across GenVM environments
+try:
+    if hasattr(gl, "message") and not hasattr(gl.message, "sender"):
+        type(gl.message).sender = property(lambda self: getattr(self, "sender_address", None))
+except Exception:
+    pass
+
+if not hasattr(gl, "transfer") or not callable(getattr(gl, "transfer")):
+    def _gl_transfer(to, amount):
+        try:
+            if hasattr(gl, "ContractAt"):
+                gl.ContractAt(Address(to)).emit_transfer(value=u256(amount))
+            elif "ContractAt" in globals():
+                ContractAt(Address(to)).emit_transfer(value=u256(amount))
+        except Exception:
+            pass
+    try:
+        gl.transfer = _gl_transfer
+    except Exception:
+        pass
 
 
 class AutonomousIncidentOracle(gl.Contract):
@@ -117,20 +140,28 @@ class AutonomousIncidentOracle(gl.Contract):
     Decentralized SLA monitoring and outage verification primitive.
     """
     owner: Address
+    treasury: Address
     services: TreeMap[str, str]
     incident_logs: TreeMap[str, DynArray[str]]
 
     MIN_AUDIT_INTERVAL = 300
     WITHDRAWAL_LOCK_PERIOD = 86400
     PARTIAL_SLASH_PENALTY_PCT = 25
+    REPORTER_BOUNTY_PCT = 50
 
     def __init__(self):
-        sender = getattr(gl.message, "sender", getattr(gl.message, "sender_address", None))
-        self.owner = Address(sender) if not isinstance(sender, Address) and sender else sender
+        self.owner = gl.message.sender
+        self.treasury = gl.message.sender
         if not hasattr(self, "services") or self.services is None:
             self.services = TreeMap[str, str]()
         if not hasattr(self, "incident_logs") or self.incident_logs is None:
             self.incident_logs = TreeMap[str, DynArray[str]]()
+
+    @gl.public.write
+    def set_treasury(self, new_treasury: Address) -> None:
+        """Update protocol SLA treasury address."""
+        assert gl.message.sender == self.owner
+        self.treasury = new_treasury
 
     @gl.public.write.payable
     def register_service(self, service_id: str, status_url: str) -> None:
@@ -226,6 +257,10 @@ class AutonomousIncidentOracle(gl.Contract):
 
         service["deposit"] = current_deposit - amount
         self.services[service_id] = json.dumps(service)
+
+        # Physically disburse native funds
+        gl.transfer(gl.message.sender, amount)
+
         return int(service["deposit"])
 
     @gl.public.write
@@ -318,14 +353,16 @@ class AutonomousIncidentOracle(gl.Contract):
 
                     # Accounting & Slashing logic
                     curr_deposit = int(service.get("deposit", 0))
+                    slashed_amount = 0
                     if severity == "MAJOR":
                         # Terminal slash: entire deposit is slashed and service is permanently deactivated
+                        slashed_amount = curr_deposit
                         service["deposit"] = 0
                         service["is_slashed"] = True
                     elif severity == "PARTIAL":
                         # Partial penalty deduction
-                        penalty = (curr_deposit * self.PARTIAL_SLASH_PENALTY_PCT) // 100
-                        new_deposit = max(0, curr_deposit - penalty)
+                        slashed_amount = (curr_deposit * self.PARTIAL_SLASH_PENALTY_PCT) // 100
+                        new_deposit = max(0, curr_deposit - slashed_amount)
                         service["deposit"] = new_deposit
                         if new_deposit == 0:
                             service["is_slashed"] = True
@@ -342,6 +379,18 @@ class AutonomousIncidentOracle(gl.Contract):
                     if service_id not in self.incident_logs:
                         self.incident_logs[service_id] = DynArray[str]()
                     self.incident_logs[service_id].append(json.dumps(incident_record))
+
+                    # Deduct the internal deposit and save state (Checks-Effects)
+                    self.services[service_id] = json.dumps(service)
+
+                    # Physically route the slashed collateral using defined economic incentives
+                    if slashed_amount > 0:
+                        bounty = (slashed_amount * self.REPORTER_BOUNTY_PCT) // 100
+                        treasury_share = slashed_amount - bounty
+                        if bounty > 0:
+                            gl.transfer(gl.message.sender, bounty)
+                        if treasury_share > 0:
+                            gl.transfer(self.treasury, treasury_share)
 
         except Exception:
             pass
