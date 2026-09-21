@@ -2,12 +2,12 @@
 
 [![GenLayer Intelligent Contract](https://img.shields.io/badge/GenLayer-Intelligent%20Contract-blueviolet.svg)](https://genlayer.com)
 [![GenVM Runner Pinned](https://img.shields.io/badge/GenVM%20Runner-py--genlayer%3A1jb45aa8-success.svg)](https://github.com/genlayerlabs/genvm-manager)
-[![Tests](https://img.shields.io/badge/Tests-38%2F38%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-43%2F43%20Passing-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An intelligent, autonomous Web3 SLA monitoring and outage verification oracle deployed on **GenLayer**. Powered by decentralized multi-validator consensus, non-deterministic live web rendering, LLM extraction, and a custom multi-tier equivalence comparator (`incident_comparator`).
 
-- **Studionet Contract Address**: [`0x9dF3C49Db61aC1E87eB421385ac515c2FBF0855a`](https://studio.genlayer.com)
+- **Studionet Contract Address**: [`0xef5b84B66e3111b72E61c886cBD878915980ffC4`](https://studio.genlayer.com)
 - **Pinned GenVM Runner**: `py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`
 
 ---
@@ -220,48 +220,53 @@ The oracle is backed by a test suite covering all comparator boundary conditions
 platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
 rootdir: incident-oracle
 plugins: anyio-4.14.0, genlayer-test-0.30.0rc2
-collected 36 items
+collected 43 items
 
 tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_major_outage PASSED [  2%]
-tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_no_outage PASSED [  5%]
-tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_partial_outage PASSED [  8%]
-tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_keys_different_ordering_and_whitespace PASSED [ 11%]
-tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_delta_within_window PASSED [ 13%]
-tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_exact_boundary_positive_900s PASSED [ 16%]
-tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_exact_boundary_negative_900s PASSED [ 19%]
-tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_899s_delta PASSED [ 22%]
-tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_major_vs_partial PASSED [ 25%]
-tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_major_vs_none PASSED [ 27%]
-tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_case_insensitive_severity_matches PASSED [ 30%]
-tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_invalid_severity_string PASSED [ 33%]
-tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_timestamp_delta_901s PASSED [ 36%]
-tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_timestamp_negative_delta_901s PASSED [ 38%]
-tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_large_timestamp_delta PASSED [ 41%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_malformed_json_syntax PASSED [ 44%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_json_string PASSED [ 47%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_unicode_whitespace_handling PASSED [ 50%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_string_types PASSED [ 52%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_json_primitive_or_array_instead_of_object PASSED [ 55%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_missing_required_keys PASSED [ 58%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_is_outage_type_and_parity PASSED [ 61%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_extreme_and_invalid_timestamps PASSED [ 63%]
-tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_string_severity PASSED [ 66%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_contract_initialization PASSED [ 65%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_set_treasury PASSED [ 68%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_register_service_success PASSED [ 71%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_register_service_validation PASSED [ 73%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_get_service_not_found PASSED [ 76%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_get_incidents_not_found PASSED [ 78%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_validation PASSED [ 81%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_anti_spam_cooldown PASSED [ 84%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_web_failure_graceful_degradation PASSED [ 86%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_llm_failure_graceful_degradation PASSED [ 89%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_partial_outage_deducts_penalty PASSED [ 92%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_deposit_top_up_and_recovery PASSED [ 94%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_deposit_withdrawal_lock_period PASSED [ 97%]
-tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_slashing_disposal_major_outage PASSED [100%]
+tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_no_outage PASSED [  4%]
+tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_partial_outage PASSED [  6%]
+tests/test_oracle.py::TestIncidentComparatorIdenticalInputs::test_identical_keys_different_ordering_and_whitespace PASSED [  9%]
+tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_delta_within_window PASSED [ 11%]
+tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_exact_boundary_positive_900s PASSED [ 13%]
+tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_exact_boundary_negative_900s PASSED [ 16%]
+tests/test_oracle.py::TestIncidentComparatorTimestampWindow::test_timestamp_899s_delta PASSED [ 18%]
+tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_major_vs_partial PASSED [ 20%]
+tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_major_vs_none PASSED [ 23%]
+tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_case_insensitive_severity_matches PASSED [ 25%]
+tests/test_oracle.py::TestIncidentComparatorDivergentSeverity::test_invalid_severity_string PASSED [ 27%]
+tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_timestamp_delta_901s PASSED [ 30%]
+tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_timestamp_negative_delta_901s PASSED [ 32%]
+tests/test_oracle.py::TestIncidentComparatorTimestampDivergence::test_large_timestamp_delta PASSED [ 34%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_malformed_json_syntax PASSED [ 37%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_json_string PASSED [ 39%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_unicode_whitespace_handling PASSED [ 41%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_string_types PASSED [ 44%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_json_primitive_or_array_instead_of_object PASSED [ 46%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_missing_required_keys PASSED [ 48%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_is_outage_type_and_parity PASSED [ 51%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_extreme_and_invalid_timestamps PASSED [ 53%]
+tests/test_oracle.py::TestIncidentComparatorInvalidJSONAndHardening::test_non_string_severity PASSED [ 55%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_contract_initialization PASSED [ 58%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_set_treasury PASSED [ 60%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_register_service_success PASSED [ 62%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_register_service_validation PASSED [ 65%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_get_service_not_found PASSED [ 67%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_get_incidents_not_found PASSED [ 69%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_validation PASSED [ 72%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_anti_spam_cooldown PASSED [ 74%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_web_failure_graceful_degradation PASSED [ 76%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_llm_failure_graceful_degradation PASSED [ 79%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_report_incident_partial_outage_deducts_penalty PASSED [ 81%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_deposit_top_up_and_recovery PASSED [ 83%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_deposit_withdrawal_lock_period PASSED [ 86%]
+tests/test_oracle.py::TestAutonomousIncidentOracleContract::test_slashing_disposal_major_outage PASSED [ 88%]
+tests/test_oracle.py::TestFundFlowTransferImplementation::test_gl_transfer_fallback_uses_get_contract_at_emit_transfer PASSED [ 90%]
+tests/test_oracle.py::TestFundFlowTransferImplementation::test_gl_transfer_fallback_propagates_exceptions_without_suppression PASSED [ 93%]
+tests/test_oracle.py::TestFundFlowTransferImplementation::test_gl_transfer_zero_amount_noop PASSED [ 95%]
+tests/test_oracle.py::TestFundFlowTransferImplementation::test_withdraw_deposit_propagates_transfer_failure PASSED [ 97%]
+tests/test_oracle.py::TestFundFlowTransferImplementation::test_report_incident_slashing_propagates_transfer_failure PASSED [100%]
 
-============================= 38 passed in 0.24s ==============================
+============================= 43 passed in 0.50s ==============================
 ```
 
 ### GenVM Static Analysis & Linter Verification

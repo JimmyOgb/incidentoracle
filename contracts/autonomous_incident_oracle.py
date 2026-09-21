@@ -114,20 +114,30 @@ REPORTER_BOUNTY_PCT: int = 50
 
 # Runtime compatibility shims for gl.message.sender and gl.transfer across GenVM environments
 try:
+    if hasattr(gl, "MessageType") and not hasattr(gl.MessageType, "sender"):
+        gl.MessageType.sender = property(lambda self: getattr(self, "sender_address", None))
     if hasattr(gl, "message") and not hasattr(gl.message, "sender"):
         type(gl.message).sender = property(lambda self: getattr(self, "sender_address", None))
 except Exception:
     pass
 
+if "u256" not in globals():
+    u256 = getattr(gl, "u256", int)
+
+def _gl_transfer(to: Address | str, amount: int) -> None:
+    """Transfer native value to recipient using GenLayer SDK get_contract_at(...).emit_transfer(...)."""
+    val = u256(int(amount)) if "u256" in globals() else int(amount)
+    if val <= 0:
+        return
+    addr = to if isinstance(to, Address) else Address(str(to))
+    if hasattr(gl, "get_contract_at"):
+        gl.get_contract_at(addr).emit_transfer(value=val)
+    elif "get_contract_at" in globals():
+        get_contract_at(addr).emit_transfer(value=val)
+    else:
+        raise RuntimeError("No contract transfer primitive available in GenLayer SDK")
+
 if not hasattr(gl, "transfer") or not callable(getattr(gl, "transfer")):
-    def _gl_transfer(to, amount):
-        try:
-            if hasattr(gl, "ContractAt"):
-                gl.ContractAt(Address(to)).emit_transfer(value=u256(amount))
-            elif "ContractAt" in globals():
-                ContractAt(Address(to)).emit_transfer(value=u256(amount))
-        except Exception:
-            pass
     try:
         gl.transfer = _gl_transfer
     except Exception:
@@ -259,7 +269,8 @@ class AutonomousIncidentOracle(gl.Contract):
         self.services[service_id] = json.dumps(service)
 
         # Physically disburse native funds
-        gl.transfer(gl.message.sender, amount)
+        recipient = getattr(gl.message, "sender", getattr(gl.message, "sender_address", None))
+        gl.transfer(recipient, amount)
 
         return int(service["deposit"])
 
@@ -342,58 +353,60 @@ class AutonomousIncidentOracle(gl.Contract):
         # Update last audit timestamp
         service["last_audit_timestamp"] = now_epoch
 
+        parsed = None
         try:
             parsed = json.loads(output_str)
-            if isinstance(parsed, dict):
-                is_outage = parsed.get("is_outage", False)
-                severity = str(parsed.get("severity", "NONE")).strip().upper()
-                if is_outage and severity in ("PARTIAL", "MAJOR"):
-                    service["total_incidents"] = int(service.get("total_incidents", 0)) + 1
-                    service["last_incident_timestamp"] = now_epoch
-
-                    # Accounting & Slashing logic
-                    curr_deposit = int(service.get("deposit", 0))
-                    slashed_amount = 0
-                    if severity == "MAJOR":
-                        # Terminal slash: entire deposit is slashed and service is permanently deactivated
-                        slashed_amount = curr_deposit
-                        service["deposit"] = 0
-                        service["is_slashed"] = True
-                    elif severity == "PARTIAL":
-                        # Partial penalty deduction
-                        slashed_amount = (curr_deposit * self.PARTIAL_SLASH_PENALTY_PCT) // 100
-                        new_deposit = max(0, curr_deposit - slashed_amount)
-                        service["deposit"] = new_deposit
-                        if new_deposit == 0:
-                            service["is_slashed"] = True
-
-                    incident_record = {
-                        "service_id": service_id,
-                        "is_outage": True,
-                        "severity": severity,
-                        "timestamp_epoch": int(parsed.get("timestamp_epoch", now_epoch)),
-                        "reason": str(parsed.get("reason", "")),
-                        "deposit_after_incident": int(service["deposit"]),
-                    }
-
-                    if service_id not in self.incident_logs:
-                        self.incident_logs[service_id] = DynArray[str]()
-                    self.incident_logs[service_id].append(json.dumps(incident_record))
-
-                    # Deduct the internal deposit and save state (Checks-Effects)
-                    self.services[service_id] = json.dumps(service)
-
-                    # Physically route the slashed collateral using defined economic incentives
-                    if slashed_amount > 0:
-                        bounty = (slashed_amount * self.REPORTER_BOUNTY_PCT) // 100
-                        treasury_share = slashed_amount - bounty
-                        if bounty > 0:
-                            gl.transfer(gl.message.sender, bounty)
-                        if treasury_share > 0:
-                            gl.transfer(self.treasury, treasury_share)
-
         except Exception:
-            pass
+            parsed = None
+
+        if isinstance(parsed, dict):
+            is_outage = parsed.get("is_outage", False)
+            severity = str(parsed.get("severity", "NONE")).strip().upper()
+            if is_outage and severity in ("PARTIAL", "MAJOR"):
+                service["total_incidents"] = int(service.get("total_incidents", 0)) + 1
+                service["last_incident_timestamp"] = now_epoch
+
+                # Accounting & Slashing logic
+                curr_deposit = int(service.get("deposit", 0))
+                slashed_amount = 0
+                if severity == "MAJOR":
+                    # Terminal slash: entire deposit is slashed and service is permanently deactivated
+                    slashed_amount = curr_deposit
+                    service["deposit"] = 0
+                    service["is_slashed"] = True
+                elif severity == "PARTIAL":
+                    # Partial penalty deduction
+                    slashed_amount = (curr_deposit * self.PARTIAL_SLASH_PENALTY_PCT) // 100
+                    new_deposit = max(0, curr_deposit - slashed_amount)
+                    service["deposit"] = new_deposit
+                    if new_deposit == 0:
+                        service["is_slashed"] = True
+
+                incident_record = {
+                    "service_id": service_id,
+                    "is_outage": True,
+                    "severity": severity,
+                    "timestamp_epoch": int(parsed.get("timestamp_epoch", now_epoch)),
+                    "reason": str(parsed.get("reason", "")),
+                    "deposit_after_incident": int(service["deposit"]),
+                }
+
+                if service_id not in self.incident_logs:
+                    self.incident_logs[service_id] = DynArray[str]()
+                self.incident_logs[service_id].append(json.dumps(incident_record))
+
+                # Deduct the internal deposit and save state (Checks-Effects)
+                self.services[service_id] = json.dumps(service)
+
+                # Physically route the slashed collateral using defined economic incentives
+                if slashed_amount > 0:
+                    bounty = (slashed_amount * self.REPORTER_BOUNTY_PCT) // 100
+                    treasury_share = slashed_amount - bounty
+                    reporter = getattr(gl.message, "sender", getattr(gl.message, "sender_address", None))
+                    if bounty > 0:
+                        gl.transfer(reporter, bounty)
+                    if treasury_share > 0:
+                        gl.transfer(self.treasury, treasury_share)
 
         self.services[service_id] = json.dumps(service)
         return output_str

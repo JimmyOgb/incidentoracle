@@ -94,6 +94,7 @@ if "genlayer.gl" not in sys.modules:
 from contracts.autonomous_incident_oracle import (
     AutonomousIncidentOracle,
     incident_comparator,
+    _gl_transfer,
 )
 import genlayer.gl as gl
 
@@ -764,3 +765,79 @@ class TestAutonomousIncidentOracleContract:
         assert service["is_slashed"] is True
 
         gl.message.sender = prev_sender
+
+
+class TestFundFlowTransferImplementation:
+    """Validate fund-flow native transfer implementation resolving reviewer Joaquin's rejection."""
+
+    def test_gl_transfer_fallback_uses_get_contract_at_emit_transfer(self, monkeypatch):
+        """Verify _gl_transfer invokes get_contract_at(Address(to)).emit_transfer(value=val)."""
+        mock_contract = MagicMock()
+        mock_get_contract_at = MagicMock(return_value=mock_contract)
+        monkeypatch.setattr(gl, "get_contract_at", mock_get_contract_at, raising=False)
+
+        target = "0x9876543210987654321098765432109876543210"
+        _gl_transfer(target, 500)
+
+        mock_get_contract_at.assert_called_once()
+        called_addr = mock_get_contract_at.call_args[0][0]
+        assert str(called_addr) == target
+        mock_contract.emit_transfer.assert_called_once_with(value=500)
+
+    def test_gl_transfer_fallback_propagates_exceptions_without_suppression(self, monkeypatch):
+        """Verify _gl_transfer does not swallow errors when emit_transfer fails."""
+        mock_contract = MagicMock()
+        mock_contract.emit_transfer.side_effect = RuntimeError("EVM VM revert during native transfer")
+        monkeypatch.setattr(gl, "get_contract_at", lambda addr: mock_contract, raising=False)
+
+        with pytest.raises(RuntimeError, match="EVM VM revert during native transfer"):
+            _gl_transfer("0x1111111111111111111111111111111111111111", 100)
+
+    def test_gl_transfer_zero_amount_noop(self, monkeypatch):
+        """Verify _gl_transfer does not invoke emit_transfer when amount <= 0."""
+        mock_get_contract_at = MagicMock()
+        monkeypatch.setattr(gl, "get_contract_at", mock_get_contract_at, raising=False)
+
+        _gl_transfer("0x1111111111111111111111111111111111111111", 0)
+        _gl_transfer("0x1111111111111111111111111111111111111111", -50)
+        mock_get_contract_at.assert_not_called()
+
+    def test_withdraw_deposit_propagates_transfer_failure(self, monkeypatch):
+        """Verify withdrawal fails and is not confirmed if transfer raises."""
+        oracle = AutonomousIncidentOracle()
+        service_id = "revert-withdraw-svc"
+        gl.message.value = 1000
+        oracle.register_service(service_id, "https://status.withdraw-fail.com")
+
+        # Age past lock
+        service = oracle.get_service(service_id)
+        service["created_at"] -= 86401
+        oracle.services[service_id] = json.dumps(service)
+
+        # Force gl.transfer to fail
+        monkeypatch.setattr(gl, "transfer", MagicMock(side_effect=RuntimeError("Insufficient gas for transfer")))
+
+        with pytest.raises(RuntimeError, match="Insufficient gas for transfer"):
+            oracle.withdraw_deposit(service_id, 300)
+
+    def test_report_incident_slashing_propagates_transfer_failure(self, monkeypatch):
+        """Verify slashing does not swallow transfer failures during bounty/treasury payout."""
+        oracle = AutonomousIncidentOracle()
+        service_id = "revert-slash-svc"
+        gl.message.value = 1000
+        oracle.register_service(service_id, "https://status.slash-fail.com")
+
+        llm_response = {
+            "is_outage": True,
+            "severity": "MAJOR",
+            "timestamp_epoch": 1710000000,
+            "reason": "Complete power outage",
+        }
+        monkeypatch.setattr(gl.nondet.web, "render", lambda url: "Outage")
+        monkeypatch.setattr(gl.nondet, "exec_prompt", lambda prompt, response_format=None: llm_response)
+
+        # Force gl.transfer to fail
+        monkeypatch.setattr(gl, "transfer", MagicMock(side_effect=RuntimeError("Transfer to treasury failed")))
+
+        with pytest.raises(RuntimeError, match="Transfer to treasury failed"):
+            oracle.report_incident(service_id)
